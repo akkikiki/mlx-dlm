@@ -106,20 +106,45 @@ def top_p_logits(logits: mx.array, p: float) -> mx.array:
     return mx.where(mask, mx.full(logits.shape, float("-inf")), logits)
 
 
+def top_nsigma_logits(logits: mx.array, nsigma: float) -> mx.array:
+    """
+    Apply top-nsigma filtering to logits.
+
+    Keeps only tokens within nsigma standard deviations of the maximum logit value.
+
+    Args:
+        logits: Model output logits (batch, seq_len, vocab_size)
+        nsigma: Number of standard deviations below max to use as threshold
+
+    Returns:
+        Filtered logits with values below threshold set to -inf
+    """
+    if nsigma is None or nsigma <= 0:
+        return logits
+
+    maximum = mx.max(logits, axis=-1, keepdims=True)
+    std = mx.std(logits, axis=-1, keepdims=True)
+    threshold = maximum - nsigma * std
+
+    return mx.where(logits >= threshold, logits, mx.full(logits.shape, float("-inf")))
+
+
 def sample_tokens(
     logits: mx.array,
     temperature: float = 0.0,
     top_k: int = None,
     top_p: float = None,
+    top_nsigma: float = None,
 ) -> tuple:
     """
-    Sample tokens with temperature, top-k, and top-p filtering.
+    Sample tokens with temperature, top-k, top-p, and top-nsigma filtering.
 
     Args:
         logits: Model output logits (batch, seq_len, vocab_size)
         temperature: Sampling temperature (0 = greedy)
         top_k: Top-k filtering threshold
         top_p: Top-p (nucleus) filtering threshold
+        top_nsigma: Top-nsigma filtering threshold
 
     Returns:
         Tuple of (sampled_tokens, token_probabilities)
@@ -132,6 +157,9 @@ def sample_tokens(
 
     if top_p is not None and top_p < 1.0:
         logits = top_p_logits(logits, top_p)
+
+    if top_nsigma is not None and top_nsigma > 0:
+        logits = top_nsigma_logits(logits, top_nsigma)
 
     probs = mx.softmax(logits, axis=-1)
 
@@ -159,6 +187,7 @@ def _generate_no_cache(
     temperature: float = 0.0,
     top_p: float = None,
     top_k: int = None,
+    top_nsigma: float = None,
     threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
@@ -215,6 +244,7 @@ def _generate_no_cache(
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
+                top_nsigma=top_nsigma,
             )
 
             # Determine which tokens to transfer
@@ -281,6 +311,7 @@ def _generate_cached(
     temperature: float = 0.0,
     top_p: float = None,
     top_k: int = None,
+    top_nsigma: float = None,
     threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
@@ -357,6 +388,7 @@ def _generate_cached(
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
+                top_nsigma=top_nsigma,
             )
 
             # Determine which tokens to transfer
@@ -438,6 +470,7 @@ def generate(
     temperature: float = 0.0,
     top_p: float = None,
     top_k: int = None,
+    top_nsigma: float = None,
     threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
@@ -456,6 +489,7 @@ def generate(
         temperature: Sampling temperature (0 = greedy)
         top_p: Nucleus sampling threshold
         top_k: Top-k sampling threshold
+        top_nsigma: Top-nsigma sampling threshold
         threshold: Confidence threshold for accepting tokens
         mask_id: Token ID used for masked positions
         eos_id: End-of-sequence token ID
@@ -475,6 +509,7 @@ def generate(
         temperature=temperature,
         top_p=top_p,
         top_k=top_k,
+        top_nsigma=top_nsigma,
         threshold=threshold,
         mask_id=mask_id,
         eos_id=eos_id,
@@ -492,6 +527,7 @@ def _stream_generate_no_cache(
     temperature: float = 0.0,
     top_p: float = None,
     top_k: int = None,
+    top_nsigma: float = None,
     threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
@@ -549,6 +585,7 @@ def _stream_generate_no_cache(
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
+                top_nsigma=top_nsigma,
             )
 
             num_to_transfer = int(num_transfer_schedule[step].item())
@@ -608,6 +645,7 @@ def _stream_generate_cached(
     temperature: float = 0.0,
     top_p: float = None,
     top_k: int = None,
+    top_nsigma: float = None,
     threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
@@ -686,6 +724,7 @@ def _stream_generate_cached(
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
+                top_nsigma=top_nsigma,
             )
 
             num_to_transfer = int(num_transfer_schedule[step].item())
@@ -758,6 +797,7 @@ def stream_generate(
     temperature: float = 0.0,
     top_p: float = None,
     top_k: int = None,
+    top_nsigma: float = None,
     threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
@@ -778,6 +818,7 @@ def stream_generate(
         temperature: Sampling temperature
         top_p: Nucleus sampling threshold
         top_k: Top-k sampling threshold
+        top_nsigma: Top-nsigma sampling threshold
         threshold: Confidence threshold
         mask_id: Mask token ID
         eos_id: EOS token ID
@@ -797,6 +838,7 @@ def stream_generate(
         temperature=temperature,
         top_p=top_p,
         top_k=top_k,
+        top_nsigma=top_nsigma,
         threshold=threshold,
         mask_id=mask_id,
         eos_id=eos_id,
