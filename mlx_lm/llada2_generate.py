@@ -188,7 +188,6 @@ def _generate_no_cache(
     top_p: float = None,
     top_k: int = None,
     top_nsigma: float = None,
-    threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
     eos_early_stop: bool = True,
@@ -253,22 +252,16 @@ def _generate_no_cache(
             # Mask out non-mask positions for confidence calculation
             confidence = mx.where(active_mask, token_probs, mx.array(-float("inf")))
 
-            # Find high confidence tokens above threshold
-            high_conf_mask = confidence > threshold
-            num_high_conf = mx.sum(high_conf_mask).item()
-
-            if num_high_conf >= num_to_transfer:
-                transfer_mask = high_conf_mask
+            # Top-k selection (simplified - threshold check removed as it never triggered)
+            flat_conf = confidence.reshape(-1)
+            k = min(num_to_transfer, int(num_masks))
+            if k > 0:
+                top_indices = mx.argpartition(-flat_conf, kth=k-1)[:k]
+                transfer_mask = mx.zeros(flat_conf.shape, dtype=mx.bool_)
+                transfer_mask = transfer_mask.at[top_indices].add(True)
+                transfer_mask = transfer_mask.reshape(active_mask.shape)
             else:
-                flat_conf = confidence.reshape(-1)
-                k = min(num_to_transfer, int(num_masks))
-                if k > 0:
-                    top_indices = mx.argpartition(-flat_conf, kth=k-1)[:k]
-                    transfer_mask = mx.zeros(flat_conf.shape, dtype=mx.bool_)
-                    transfer_mask = transfer_mask.at[top_indices].add(True)
-                    transfer_mask = transfer_mask.reshape(active_mask.shape)
-                else:
-                    transfer_mask = mx.zeros(active_mask.shape, dtype=mx.bool_)
+                transfer_mask = mx.zeros(active_mask.shape, dtype=mx.bool_)
 
             # Update tokens
             new_block = mx.where(transfer_mask, sampled_tokens, active_block)
@@ -312,7 +305,6 @@ def _generate_cached(
     top_p: float = None,
     top_k: int = None,
     top_nsigma: float = None,
-    threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
     eos_early_stop: bool = True,
@@ -397,22 +389,16 @@ def _generate_cached(
             # Mask out non-mask positions for confidence calculation
             confidence = mx.where(active_mask, token_probs, mx.array(-float("inf")))
 
-            # Find high confidence tokens above threshold
-            high_conf_mask = confidence > threshold
-            num_high_conf = mx.sum(high_conf_mask).item()
-
-            if num_high_conf >= num_to_transfer:
-                transfer_mask = high_conf_mask
+            # Top-k selection (simplified - threshold check removed as it never triggered)
+            flat_conf = confidence.reshape(-1)
+            k = min(num_to_transfer, int(num_masks))
+            if k > 0:
+                top_indices = mx.argpartition(-flat_conf, kth=k-1)[:k]
+                transfer_mask = mx.zeros(flat_conf.shape, dtype=mx.bool_)
+                transfer_mask = transfer_mask.at[top_indices].add(True)
+                transfer_mask = transfer_mask.reshape(active_mask.shape)
             else:
-                flat_conf = confidence.reshape(-1)
-                k = min(num_to_transfer, int(num_masks))
-                if k > 0:
-                    top_indices = mx.argpartition(-flat_conf, kth=k-1)[:k]
-                    transfer_mask = mx.zeros(flat_conf.shape, dtype=mx.bool_)
-                    transfer_mask = transfer_mask.at[top_indices].add(True)
-                    transfer_mask = transfer_mask.reshape(active_mask.shape)
-                else:
-                    transfer_mask = mx.zeros(active_mask.shape, dtype=mx.bool_)
+                transfer_mask = mx.zeros(active_mask.shape, dtype=mx.bool_)
 
             # Update block tokens
             block_tokens = mx.where(transfer_mask, sampled_tokens, block_tokens)
@@ -471,7 +457,6 @@ def generate(
     top_p: float = None,
     top_k: int = None,
     top_nsigma: float = None,
-    threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
     eos_early_stop: bool = True,
@@ -490,7 +475,6 @@ def generate(
         top_p: Nucleus sampling threshold
         top_k: Top-k sampling threshold
         top_nsigma: Top-nsigma sampling threshold
-        threshold: Confidence threshold for accepting tokens
         mask_id: Token ID used for masked positions
         eos_id: End-of-sequence token ID
         eos_early_stop: Whether to stop early on EOS token
@@ -510,7 +494,6 @@ def generate(
         top_p=top_p,
         top_k=top_k,
         top_nsigma=top_nsigma,
-        threshold=threshold,
         mask_id=mask_id,
         eos_id=eos_id,
         eos_early_stop=eos_early_stop,
@@ -528,7 +511,6 @@ def _stream_generate_no_cache(
     top_p: float = None,
     top_k: int = None,
     top_nsigma: float = None,
-    threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
 ):
@@ -646,7 +628,6 @@ def _stream_generate_cached(
     top_p: float = None,
     top_k: int = None,
     top_nsigma: float = None,
-    threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
 ):
@@ -798,7 +779,6 @@ def stream_generate(
     top_p: float = None,
     top_k: int = None,
     top_nsigma: float = None,
-    threshold: float = 0.95,
     mask_id: int = 156895,
     eos_id: int = 156892,
     use_cache: bool = True,
@@ -819,7 +799,6 @@ def stream_generate(
         top_p: Nucleus sampling threshold
         top_k: Top-k sampling threshold
         top_nsigma: Top-nsigma sampling threshold
-        threshold: Confidence threshold
         mask_id: Mask token ID
         eos_id: EOS token ID
         use_cache: Whether to use KV-cache for the static prefix
@@ -839,7 +818,6 @@ def stream_generate(
         top_p=top_p,
         top_k=top_k,
         top_nsigma=top_nsigma,
-        threshold=threshold,
         mask_id=mask_id,
         eos_id=eos_id,
     )
